@@ -37,13 +37,13 @@ def calculateCoverage(image, dgo_shape, scale):
         geometry=dgo_shape.geometry(),
         scale=scale,
         maxPixels=1e16
-    ).getNumber('BLUE')  # Assuming B2 as a representative band
+    ).getNumber('blue')  # Assuming B2 as a representative band
 
     # Calculate the expected total number of pixels in the AOI at the given scale
     aoi_pixel_count = dgo_shape.area().divide(scale**2)
 
     # Calculate the coverage score as the ratio of actual to expected pixels
-    coverage_score = act_pixels.divide(aoi_pixel_count).multiply(100)
+    coverage_score = act_pixels.divide(aoi_pixel_count).multiply(100).round()
 
     return coverage_score
 
