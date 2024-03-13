@@ -45,7 +45,7 @@ def extractWater(image):
 
 def extractVegetation(image):
     # Seuillage du raster
-    output_img = image.expression('NDVI > 0.15', {'NDVI': image.select('NDVI')}).rename('VEGETATION')
+    output_img = image.expression('NDVI > 0.3', {'NDVI': image.select('NDVI')}).rename('VEGETATION')
     
     # Filtre modal pour retirer les pixels isolés
     output_img = output_img.focalMode(3)

@@ -2,66 +2,53 @@ import ee
 
 def calculateClearScore(image, dgo_shape, scale):
     
-    clear_mask = image.unmask().select('CLEAR').eq(1)
-    
-    clear_size = clear_mask.reduceRegion(
-        reducer = ee.Reducer.sum(),
-        geometry = dgo_shape.geometry(),
-        scale = scale
+    # Calculate the number of clear pixels within the AOI.
+    clear_size = image.unmask().select('CLEAR').eq(1).reduceRegion(
+        reducer=ee.Reducer.sum(),
+        geometry=dgo_shape.geometry(),
+        scale=scale
     ).getNumber('CLEAR')
     
-    full_size = clear_mask.reduceRegion(
-        reducer = ee.Reducer.count(),
-        geometry = dgo_shape.geometry(),
-        scale = scale
+    # Calculate the total number of pixels within the AOI.
+    full_size = image.select('CLEAR').reduceRegion(
+        reducer=ee.Reducer.count(),
+        geometry=dgo_shape.geometry(),
+        scale=scale
     ).getNumber('CLEAR')
     
+    # Calculate the clear score as the ratio of clear pixels to total pixels, multiplied by 100 to get a percentage.
     clear_score = clear_size.divide(full_size).multiply(100).round()
 
     return clear_score
-
-
-def calculateCloudScore(image, dgo_shape, scale):
     
-    cloud_mask = image.unmask().select('CLOUDS').eq(0)
-    
-    cloudy_size = cloud_mask.reduceRegion(
-        reducer = ee.Reducer.sum(),
-        geometry = dgo_shape.geometry(),
-        scale = scale
-    ).getNumber('CLOUDS')
-    
-    full_size = cloud_mask.reduceRegion(
-        reducer = ee.Reducer.count(),
-        geometry = dgo_shape.geometry(),
-        scale = scale
-    ).getNumber('CLOUDS')
-    
-    cloud_score = cloudy_size.divide(full_size).multiply(100).round()
-
-    return cloud_score
-
 
 def calculateCoverage(image, dgo_shape, scale):
-    # Calculate how much an image cover a DGO
+    # Calculate how much an image covers a DGO
+
+    # Calculate the expected total number of pixels in the AOI at the given scale
+    aoi_pixel_count = dgo_shape.area().divide(scale**2)
     
-    unmasked = image.unmask(1)
-    
-    total_pixels = dgo_shape.area(maxError=1, proj=image.select('blue').projection())
-    
-    act_pixels = unmasked.reduceRegion(
-        reducer = ee.Reducer.count(),
-        geometry = dgo_shape.geometry(),
-        scale = scale,
-        maxPixels = 1e16
-    ).getNumber('red')
-    
-    coverage_score = act_pixels.divide(total_pixels).multiply(100).round()
+    # Ensure the image is unmasked to count all pixels within the geometry
+    unmasked_image = image.unmask(0)
+
+    # Count the number of actual data pixels within the AOI
+    act_pixels = unmasked_image.reduceRegion(
+        reducer=ee.Reducer.count(),
+        geometry=dgo_shape.geometry(),
+        scale=scale,
+        maxPixels=1e16
+    ).getNumber('BLUE')  # Assuming B2 as a representative band
+
+    # Calculate the expected total number of pixels in the AOI at the given scale
+    aoi_pixel_count = dgo_shape.area().divide(scale**2)
+
+    # Calculate the coverage score as the ratio of actual to expected pixels
+    coverage_score = act_pixels.divide(aoi_pixel_count).multiply(100)
 
     return coverage_score
 
 
-def calculateWaterMetrics(image, dgo, scale, simplify_tolerance=1.5):
+def calculateWaterMetrics(image, dgo, scale):
     # Vectorisation des surfaces
     water = image.select('WATER').reduceToVectors(
         geometry = dgo.geometry(),
@@ -75,7 +62,7 @@ def calculateWaterMetrics(image, dgo, scale, simplify_tolerance=1.5):
     # vector_dry = water.filter("label == 0")
     
     # Simplifier les géométries pour le périmètre
-    geoms_water = vector_water.geometry().simplify(scale*simplify_tolerance)
+    geoms_water = vector_water.geometry()
 
     # Calculer les percentiles de taille de polygones
     water_percentiles = vector_water.aggregate_array('count').reduce(ee.Reducer.percentile(
@@ -105,13 +92,6 @@ def calculateWaterMetrics(image, dgo, scale, simplify_tolerance=1.5):
                 scale = scale
             ).getNumber('NDWI'),
 
-        # # Calcul du NDWI moyen des surfaces émergées
-        # 'MEAN_DRY_NDWI': image.select('NDWI').reduceRegion(
-        #         reducer = ee.Reducer.mean(),
-        #         geometry = vector_dry,
-        #         scale = scale
-        #     ).getNumber('NDWI'),
-
         # Calcul du NDWI moyen de tout le DGO
         'MEAN_NDWI': image.select('NDWI').reduceRegion(
                 reducer = ee.Reducer.mean(),
@@ -123,7 +103,7 @@ def calculateWaterMetrics(image, dgo, scale, simplify_tolerance=1.5):
     return results
 
 
-def calculateVegetationMetrics(image, dgo, scale, simplify_tolerance=1.5):
+def calculateVegetationMetrics(image, dgo, scale):
     # Vectorisation des surfaces
     vectors = image.select('VEGETATION').reduceToVectors(
         geometry = dgo.geometry(),
@@ -136,7 +116,7 @@ def calculateVegetationMetrics(image, dgo, scale, simplify_tolerance=1.5):
     vector_vegetation = vectors.filter("label == 1")
     
     # Simplifier les géométries pour le périmètre.
-    geom_vegetation = vector_vegetation.geometry().simplify(scale*simplify_tolerance)
+    geom_vegetation = vector_vegetation.geometry()
 
     # Calculer les percentiles de taille de polygones
     veget_percentiles = vector_vegetation.aggregate_array('count').reduce(ee.Reducer.percentile(
@@ -184,7 +164,7 @@ def calculateVegetationMetrics(image, dgo, scale, simplify_tolerance=1.5):
     return results
 
 
-def calculateACMetrics(image, dgo, scale, simplify_tolerance=1.5):
+def calculateACMetrics(image, dgo, scale):
     # Vectorisation des surfaces
     vectors = image.select('AC').reduceToVectors(
         geometry = dgo.geometry(),
@@ -266,50 +246,6 @@ def dgoMetrics(collection, scale):
         # Renvoyer la Feature en ajoutant l'attribut metrics
         return dgo.set({'metrics': metrics})
     return mapDGO
-
-# def dgoMetrics(collection, scale):
-#     def mapDGO(dgo):
-#         # Filtrer la collection d'images sur l'emprise du DGO traité
-#         dgo_images_collection = collection.filterBounds(dgo.geometry())
-
-#         # Définir une fonction qui ajoute les métriques d'une image à la liste des métriques du DGO
-#         def addMetrics(image, metrics_list, scale):
-#             # Récupérer la Feature du DGO qui est stocké dans le premier élément de la liste
-#             dgo = ee.Feature(ee.List(metrics_list).get(0))
-            
-#             # Calculer les métriques
-#             cloud_score = calculateCloudScore(image, dgo, scale)
-#             coverage_score = calculateCoverage(image, dgo, scale)
-#             water_metrics = calculateWaterMetrics(image, dgo, scale)
-#             vegetation_metrics = calculateVegetationMetrics(image, dgo, scale)
-#             ac_metrics = calculateACMetrics(image, dgo, scale)
-            
-#             # Créer un dictionnaire avec toutes les métriques
-#             image_metrics = dgo.set(ee.Dictionary({
-#                                      'DATE': ee.Date(image.get('system:time_start')).format("YYYY-MM-dd"),
-#                                      'CLOUD_SCORE': cloud_score, 
-#                                      'COVERAGE_SCORE': coverage_score,
-#                                     }).combine(water_metrics).combine(vegetation_metrics).combine(ac_metrics))
-            
-#             # Filtrer si le DGO est 100% couvert de nuages
-#             output_list = ee.Algorithms.If(ee.Number(cloud_score).gte(ee.Number(100)), ee.List(metrics_list), ee.List(metrics_list).add(image_metrics))
-            
-#             # Ajouter ce dictionnaire à la liste des métriques
-#             return output_list
-
-#         # Stocker le DGO traité dans le premier élément de la liste
-#         first = ee.List([dgo])
-
-#         # Ajouter les métriques calculées sur chaque image à la liste
-#         # Using a lambda function to pass the scale parameter
-#         metrics = dgo_images_collection.iterate(lambda image, list: addMetrics(ee.Image(image), list, scale), first)
-
-#         # Supprimer le DGO traité de la liste pour alléger le résultat
-#         metrics = ee.List(metrics).remove(dgo)
-
-#         # Renvoyer la Feature en ajoutant l'attribut metrics
-#         return dgo.set({'metrics': metrics})
-#     return mapDGO
 
 
 def calculateDGOsMetrics(collection, dgos, scale):
