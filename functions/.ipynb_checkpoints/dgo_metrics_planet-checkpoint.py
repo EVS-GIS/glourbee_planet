@@ -227,9 +227,8 @@ def dgoMetrics(collection, scale):
                                      'COVERAGE_SCORE': coverage_score,
                                     }).combine(water_metrics).combine(vegetation_metrics).combine(ac_metrics))
             
-            # Filtrer si le DGO est 100% couvert de nuages
-            output_list = ee.Algorithms.If(ee.Number(clear_score).gte(ee.Number(100)), ee.List(metrics_list), ee.List(metrics_list).add(image_metrics))
-            
+            # Always add the image metrics to the list, ignoring the clear score filter.
+            output_list = ee.List(metrics_list).add(image_metrics)
             # Ajouter ce dictionnaire à la liste des métriques
             return output_list
 

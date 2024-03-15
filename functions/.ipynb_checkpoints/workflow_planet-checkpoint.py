@@ -19,7 +19,8 @@ tempdir = tempfile.mkdtemp(prefix='glourbee_')
 
 def startWorkflow(dgo_assetID: str,
                   ee_project_name: str,
-                  planet_collection_assetID: str):
+                  planet_collection_assetID: str,
+                  water_threshold_ndwi: '-0.2'):
     
     dgo_features = ee.FeatureCollection(dgo_assetID)
 
@@ -35,7 +36,7 @@ def startWorkflow(dgo_assetID: str,
     collection = classification_planet.calculateIndicators(planet_IC)
 
     # 3 - Classify the objects using the indicators
-    collection = classification_planet.classifyObjects(collection)
+    collection = classification_planet.classifyObjects(collection, water_threshold_ndwi)
 
     # 4 - Metrics calculation
     metrics = dgo_metrics_planet.calculateDGOsMetrics(collection=collection, dgos=dgo_features, scale = scale)

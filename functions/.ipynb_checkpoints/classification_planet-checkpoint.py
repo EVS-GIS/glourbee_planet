@@ -30,9 +30,9 @@ def calculateIndicators(collection):
 ######
 ## Thresholds to classify objects
 
-def extractWater(image):
-    # Seuillage du raster
-    output_img = image.expression('NDWI > -0.25', {'NDWI': image.select('NDWI')}).rename('WATER')
+def extractWater(image, water_threshold_ndwi):
+    # Seuillage du raster with dynamic threshold incorporation
+    output_img = image.expression('NDWI >= {0}'.format(water_threshold_ndwi),  {'NDWI': image.select('NDWI')}).rename('WATER')
     
     # Filtre modal pour retirer les pixels isolés
     output_img = output_img.focalMode(3)
@@ -41,7 +41,6 @@ def extractWater(image):
     output_img = output_img.selfMask()
     
     return image.addBands(output_img)
-
 
 def extractVegetation(image):
     # Seuillage du raster
@@ -74,8 +73,8 @@ def extractActiveChannel(image):
     return image.addBands(output_img)
 
 
-def classifyObjects(collection):
+def classifyObjects(collection, water_threshold_ndwi):
     
-    collection = collection.map(extractWater).map(extractVegetation).map(extractActiveChannel)
+    collection = collection.map(lambda image: extractWater(image, water_threshold_ndwi)).map(extractVegetation).map(extractActiveChannel)
 
     return collection
